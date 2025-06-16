@@ -1,13 +1,14 @@
 <?php
-// proxy.php - Versão para teste manual
+// proxy.php - Versão Final Completa e Corrigida
 
 // Lista de domínios permitidos para buscar o vídeo.
 $allowed_video_sources = [
     'www.anroll.net',
     'cdn-zenitsu-2-gamabunta.b-cdn.net' 
+    // Adicione outros domínios aqui se precisar no futuro.
 ];
 
-// Permitir acesso de qualquer origem para o teste manual.
+// Permitir acesso de qualquer origem. Mais simples e eficaz para este caso.
 header('Access-Control-Allow-Origin: *'); 
 
 // Pega a URL do parâmetro e valida.
@@ -40,11 +41,12 @@ curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
 $content = curl_exec($ch);
 $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
 curl_close($ch);
 
 if ($httpcode >= 200 && $httpcode < 300) {
-    header('Content-Type: ' . $contentType);
+    // -----> A CORREÇÃO CRUCIAL <-----
+    // Forçamos o Content-Type correto para HLS, resolvendo o loop infinito.
+    header('Content-Type: application/vnd.apple.mpegurl');
     echo $content;
 } else {
     http_response_code(502);
