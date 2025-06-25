@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player HLS Embutido</title>
+    <!-- Certifique-se que o caminho para hls.min.js está correto -->
+    <script src="/js/hls.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Para evitar barras de rolagem no iframe */
+            background-color: #000; /* Fundo preto por padrão */
+        }
+        #videoContainer {
+            width: 100%;
+            height: 100%;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background-color: rgba(0, 0, 0, 0.75);
+            padding: 15px 20px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 1em;
+            text-align: center;
+            z-index: 100;
+            display: none; /* Oculto por padrão */
+        }
+    </style>
+</head>
+<body>
+    <div id="videoContainer">
+        <!-- 'muted' é importante para autoplay funcionar em muitos navegadores -->
+        <!-- 'playsinline' é bom para iOS -->
+        <!-- 'controls' pode ser adicionado/removido conforme preferência -->
+        <video id="hlsPlayer" controls muted playsinline></video>
+    </div>
+    <div id="errorMessage" class="error-message"></div>
+
+    <script>
+        let hlsInstance = null;
+        const videoElement = document.getElementById('hlsPlayer');
+        const errorMessageElement = document.getElementById('errorMessage');
+
+        function showError(message) {
+            errorMessageElement.textContent = message;
+            errorMessageElement.style.display = 'block';
+            console.error("PLAYER EMBED ERROR: " + message);
+        }
+
+        function clearError() {
+            errorMessageElement.textContent = '';
+            errorMessageElement.style.display = 'none';
+        }
+
+        function loadPlayerWithParams(m3u8Src, pageUrlSrc, shouldAutoplay) {
+            clearError();
+            console.log(`Attempting to load: M3U8=[${m3u8Src}], PageURL=[${pageUrlSrc || 'N/A'}], Autoplay=[${shouldAutoplay}]`);
+
+            if (hlsInstance) {
+                hlsInstance.destroy();
+                hlsInstance = null;
+            }
+
+            // Caminho para o proxy.php na raiz do seu site
+            let proxyRequestUrl = `/proxy.php?url=${encodeURIComponent(m3u8Src)}`;
+            if (pageUrlSrc) {
+                proxyRequestUrl += `&page_url=${encodeURIComponent(pageUrlSrc)}`;
+            }
+            console.log("Proxy URL for HLS: " + proxyRequestUrl);
+
+            if (Hls.isSupported()) {
+                hlsInstance = new Hls({
+                    // debug: true, // Descomente para log detalhado do HLS.js
+                    enableWorker: true,
+                    manifestLoadingMaxRetry: 4,
+                    manifestLoadingRetryDelay: 1000,
+                    levelLoadingMaxRetry: 4,
+                    fragLoadingMaxRetry: 5,
+                });
+
+                hlsInstance.loadSource(proxyRequestUrl);
+                hlsInstance.attachMedia(videoElement);
+
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                    console.log('Manifest parsed. Autoplay:', shouldAutoplay);
+                    if (shouldAutoplay) {
+                        videoElement.play().catch(error => {
+                            console.warn(`Autoplay was blocked or failed: ${error.message}. User interaction might be needed.`);
+                            // O atributo 'muted' no vídeo já ajuda muito com o autoplay.
+                        });
+                    }
+                });
+
+                hlsInstance.on(Hls.Events.ERROR, function (event, data) {
+                    let errorMsg = `HLS.js Error: Type: ${data.type}, Details: ${data.details}`;
+                     if(data.reason) errorMsg += `, Reason: ${data.reason}`;
+
+                    if (data.fatal) {
+                        // ... (lógica de erro fatal do script anterior, adaptada) ...
+                        showError(errorMsg + " (Fatal)");
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR: hlsInstance.startLoad(); break;
+                            case Hls.ErrorTypes.MEDIA_ERROR: hlsInstance.recoverMediaError(); break;
+                            default: hlsInstance.destroy(); break;
+                        }
+                    } else {
+                        console.warn(errorMsg + " (Non-fatal)");
+                    }
+                });
+
+            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                console.log("Using native HLS support.");
+                videoElement.src = proxyRequestUrl;
+                videoElement.addEventListener('loadedmetadata', function() {
+                    if (shouldAutoplay) {
+                        videoElement.play().catch(error => console.warn(`Native autoplay failed: ${error.message}`));
+                    }
+                });
+                videoElement.addEventListener('error', (e) => {
+                    showError("Native HLS player error. Check console for details.");
+                });
+            } else {
+                showError('HLS streaming is not supported in this browser.');
+            }
+        }
+
+        // Ler parâmetros da URL da página
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const m3u8FromQuery = params.get('Blogger') || params.get('m3u8'); // Aceita 'Blogger' ou 'm3u8'
+            const pageUrlFromQuery = params.get('page_url');
+            const autoplayParam = params.get('autoplay');
+
+            if (m3u8FromQuery) {
+                const wantsAutoplay = autoplayParam === '1' || autoplayParam === 'true';
+                // Define o atributo autoplay no elemento video baseado no parâmetro
+                videoElement.autoplay = wantsAutoplay;
+
+                loadPlayerWithParams(m3u8FromQuery, pageUrlFromQuery, wantsAutoplay);
+            } else {
+                showError("Nenhuma URL M3U8 foi fornecida. Use o parâmetro 'Blogger' ou 'm3u8' na URL.");
+                console.log("Exemplo: player.html?Blogger=SUA_URL_M3U8&autoplay=1&page_url=SUA_PAGE_URL");
+            }
+        });
+    </script>
+</body>
+</html>
