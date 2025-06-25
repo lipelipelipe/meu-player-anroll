@@ -2,16 +2,21 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>Player de Vídeo HLS</title>
+  <title>Player HLS</title>
   <!-- Caminho ajustado para js/hls.min.js -->
   <script src="js/hls.min.js"></script>
   <style>
+    /* Estilos básicos para o player ocupar a tela */
     html, body {
       margin: 0;
       padding: 0;
+      width: 100%;
       height: 100%;
       background-color: #000;
-      overflow: hidden;
+      overflow: hidden; /* Evita scrollbars se o video for 100% */
+      display: flex; /* Para centralizar o iframe se necessário */
+      justify-content: center;
+      align-items: center;
     }
     video {
       width: 100%;
@@ -24,47 +29,79 @@
 </head>
 <body>
   <video id="video" controls autoplay playsinline></video>
+
   <script>
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('Blogger'); // 'Blogger' é o nome do parâmetro na URL que traz a URL do stream
+    // --- FUNÇÃO PARA PEGAR PARÂMETROS DA URL DE FORMA SEGURA ---
+    function getUrlParameter(name) {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        var results = regex.exec(location.search);
+        return results === null ? null : decodeURIComponent(results[1].replace(/\+/g, ' '));
+    };
 
-    if (token) {
-      // --- ESTA LINHA JÁ ESTÁ CORRETA PARA USAR HTTPS ---
-      // Use URL absoluta para o proxy.php, com HTTPS e domínio correto
-      const proxyUrl = `https://meu-player-anroll.onrender.com/proxy.php?url=${encodeURIComponent(token)}`;
-      // ----------------------------------------------------
+    // --- A URL DO SEU PROXY PHP ---
+    // Certifique-se de que esta URL é HTTPS e está correta
+    const proxyPhpUrl = `https://meu-player-anroll.onrender.com/proxy.php`; 
+    
+    // --- A URL ORIGINAL DO .m3u8 VEM DO SEU SERVIDOR OU DE ALGUM LUGAR ---
+    // Como você me forneceu um JSON, vamos assumir que você pode pegá-lo de alguma forma.
+    // Para este exemplo, vamos SIMULAR que a URL do stream é obtida.
+    // Em um cenário real, você teria um script PHP (ou Node.js) que
+    // pega essa URL do seu banco de dados ou de uma API, e a passa para esta página,
+    // por exemplo, como um parâmetro na URL da player_page.html
+    
+    // Exemplo de como você pegaria a URL do stream se ela viesse como um parâmetro na URL
+    // E.g., sua_pagina.html?streamUrl=https://cdn-zenitsu-2-gamabunta.b-cdn.net/...
+    const streamUrlFromPage = getUrlParameter('streamUrl'); 
+    
+    // --- OU, SE VOCÊ TIVER SEUS DADOS JSON EM UMA VARIÁVEL GLOBAL, COMO NO SEU EXEMPLO ANTERIOR ---
+    // const apiData = JSON.parse(window.parent.yourGlobalJsonVariable); // Exemplo hipotético
+    // const streamUrl = apiData.player_url; // Pegue a URL do JSON
+    // Se você não tem acesso direto ao JSON aqui, terá que passá-lo de alguma forma.
+    // Por exemplo, usando um script PHP que renderiza este HTML e injeta os dados.
 
-      const video = document.getElementById('video');
+    // Vamos usar um valor fixo para demonstração, mas lembre-se de substituí-lo
+    // pela sua lógica real de obtenção da URL do stream.
+    const urlDoStreamOriginal = streamUrlFromPage || "https://cdn-zenitsu-2-gamabunta.b-cdn.net/cf/hls/animes/chotto-dake-ai-ga-omoi-dark-elf-ga-isekai-kara-oikaketekita/001.mp4/media-1/stream.m3u8?v=1"; // Substitua pela sua lógica de obtenção da URL
 
-      if (Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(proxyUrl); // Carrega o stream através do proxy HTTPS
-        hls.attachMedia(video);
-        
-        hls.on(Hls.Events.ERROR, function(event, data) {
-            if (data.fatal) {
-                console.error("Erro fatal do HLS.js:", data);
-                switch(data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.error("Erro de rede no HLS:", data);
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.error("Erro de mídia no HLS:", data);
-                        break;
-                    default:
-                        console.error("Erro desconhecido no HLS:", data);
-                        break;
+    // Constrói a URL completa que o HLS.js usará (passando a URL original para o proxy)
+    const urlParaHlsJs = `${proxyPhpUrl}?url=${encodeURIComponent(urlDoStreamOriginal)}`;
+
+    const videoElement = document.getElementById('video');
+
+    if (urlDoStreamOriginal) { // Verifica se temos uma URL para carregar
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(urlParaHlsJs); // Carrega o stream através do seu proxy HTTPS
+            hls.attachMedia(videoElement);
+
+            // Adicionar tratamento de erros do HLS.js para depuração
+            hls.on(Hls.Events.ERROR, function(event, data) {
+                if (data.fatal) {
+                    console.error("Erro fatal do HLS.js:", event, data);
+                    switch(data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.error("Erro de rede no HLS.js.");
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.error("Erro de mídia no HLS.js.");
+                            break;
+                        default:
+                            console.error("Erro HLS.js desconhecido.");
+                            break;
+                    }
                 }
-            }
-        });
-
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = proxyUrl; // Também usa a URL HTTPS do proxy
-      } else {
-        document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>Seu navegador não suporta HLS.</p>";
-      }
+            });
+        } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+            // Fallback para navegadores que suportam HLS nativamente
+            videoElement.src = urlParaHlsJs;
+        } else {
+            // Mensagem se o navegador não suportar HLS
+            document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>Seu navegador não suporta HLS.</p>";
+        }
     } else {
-      document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>URL do vídeo não fornecida.</p>";
+        // Mensagem se a URL do stream original não foi obtida
+        document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>URL do vídeo não fornecida.</p>";
     }
   </script>
 </body>
