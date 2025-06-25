@@ -26,19 +26,40 @@
   <video id="video" controls autoplay playsinline></video>
   <script>
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('Blogger');
+    const token = params.get('Blogger'); // 'Blogger' é o nome do parâmetro na URL que traz a URL do stream
 
     if (token) {
+      // --- ESTA LINHA JÁ ESTÁ CORRETA PARA USAR HTTPS ---
       // Use URL absoluta para o proxy.php, com HTTPS e domínio correto
       const proxyUrl = `https://meu-player-anroll.onrender.com/proxy.php?url=${encodeURIComponent(token)}`;
+      // ----------------------------------------------------
+
       const video = document.getElementById('video');
 
       if (Hls.isSupported()) {
         const hls = new Hls();
-        hls.loadSource(proxyUrl);
+        hls.loadSource(proxyUrl); // Carrega o stream através do proxy HTTPS
         hls.attachMedia(video);
+        
+        hls.on(Hls.Events.ERROR, function(event, data) {
+            if (data.fatal) {
+                console.error("Erro fatal do HLS.js:", data);
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.error("Erro de rede no HLS:", data);
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.error("Erro de mídia no HLS:", data);
+                        break;
+                    default:
+                        console.error("Erro desconhecido no HLS:", data);
+                        break;
+                }
+            }
+        });
+
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = proxyUrl;
+        video.src = proxyUrl; // Também usa a URL HTTPS do proxy
       } else {
         document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>Seu navegador não suporta HLS.</p>";
       }
