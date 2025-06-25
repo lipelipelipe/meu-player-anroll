@@ -1,44 +1,54 @@
 <?php
-// proxy.php - Versão Final com Referer Fixo e Lista de Domínios Completa
+// proxy.php - Proxy HLS com suporte a Referer e domínios específicos
 
-header('Access-Control-Allow-Origin: *');
-
-// --- Início da Lista de domínios permitidos ---
-$allowed_video_sources = [
-    'cdn-zenitsu-2-gamabunta.b-cdn.net',
+// Lista de domínios permitidos a acessar este proxy
+$allowed_origins = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://subarashi.free.nf',
+    'https://subarashi.free.nf',
 ];
-// Gera dinamicamente os domínios de c1 até c30 para garantir cobertura
-for ($i = 1; $i <= 30; $i++) {
-    $allowed_video_sources[] = 'c' . $i . '.vidroll.cloud';
-}
-// --- Fim da Lista ---
 
-$targetUrl = isset($_GET['url']) ? $_GET['url'] : '';
+// Libera CORS apenas se o origin for confiável
+if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
+    header("Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}");
+}
+header("Access-Control-Allow-Headers: *");
+header("Access-Control-Allow-Methods: GET, OPTIONS");
+
+// Domínios permitidos para os vídeos .m3u8
+$allowed_video_sources = ['cdn-zenitsu-2-gamabunta.b-cdn.net'];
+for ($i = 1; $i <= 30; $i++) {
+    $allowed_video_sources[] = "c{$i}.vidroll.cloud";
+}
+
+$targetUrl = $_GET['url'] ?? '';
 if (empty($targetUrl)) {
     http_response_code(400);
-    die("Erro: Parâmetro 'url' não fornecido.");
+    exit("Erro: Parâmetro 'url' não fornecido.");
 }
 
 $urlParts = parse_url($targetUrl);
-if (!isset($urlParts['host']) || !in_array($urlParts['host'], $allowed_video_sources)) {
+$host = $urlParts['host'] ?? '';
+if (!in_array($host, $allowed_video_sources)) {
     http_response_code(403);
-    die("Erro: Acesso à fonte '{$urlParts['host']}' não é permitido pelo proxy.");
+    exit("Erro: Acesso ao host '{$host}' não é permitido.");
 }
 
-// [A CORREÇÃO MAIS IMPORTANTE]
-// Forçamos o Referer a ser o do site anroll.net, pois é o que o servidor de destino espera.
+// Cabeçalhos simulando navegador com Referer do Anroll
 $headers = [
-    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Referer: https://www.anroll.net/'
+    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    'Referer: https://www.anroll.net/',
 ];
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $targetUrl);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+$ch = curl_init($targetUrl);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => $headers,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_SSL_VERIFYPEER => false,
+    CURLOPT_TIMEOUT => 20,
+]);
 
 $content = curl_exec($ch);
 $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -46,28 +56,26 @@ $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
 curl_close($ch);
 
 if ($httpcode >= 200 && $httpcode < 300) {
-    if (strpos(strtolower($contentType), 'mpegurl') !== false || strpos(strtolower($targetUrl), '.m3u8') !== false) {
-        $base_url = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
-        $my_proxy_url = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
+    // Reescreve URLs da playlist m3u8
+    if (stripos($contentType, 'mpegurl') !== false || stripos($targetUrl, '.m3u8') !== false) {
+        $baseUrl = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
+        $myProxy = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['SCRIPT_NAME']) . '/proxy.php';
 
-        $content = preg_replace_callback(
-            '/^(?!#)(.*)$/m',
-            function ($matches) use ($base_url, $my_proxy_url) {
-                $line = trim($matches[1]);
-                if (!preg_match('/^https?:\/\//', $line)) {
-                    $line = $base_url . $line;
-                }
-                return $my_proxy_url . '?url=' . urlencode($line);
-            },
-            $content
-        );
+        $content = preg_replace_callback('/^(?!#)(.*)$/m', function ($matches) use ($baseUrl, $myProxy) {
+            $line = trim($matches[1]);
+            if (!preg_match('/^https?:\/\//', $line)) {
+                $line = $baseUrl . $line;
+            }
+            return $myProxy . '?url=' . urlencode($line);
+        }, $content);
+
         header('Content-Type: application/vnd.apple.mpegurl');
     } else {
         header('Content-Type: ' . $contentType);
     }
+
     echo $content;
 } else {
     http_response_code(502);
-    die("Falha ao buscar conteúdo de: {$targetUrl}. O servidor de origem respondeu com o status: " . $httpcode);
+    exit("Erro ao buscar conteúdo remoto ({$httpcode})");
 }
-?>
