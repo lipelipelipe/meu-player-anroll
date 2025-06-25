@@ -1,20 +1,16 @@
 <?php
-// proxy.php - Versão Final com Geração Dinâmica de Domínios
+// proxy.php - Versão Final com Referer Fixo e Lista de Domínios Completa
 
 header('Access-Control-Allow-Origin: *');
 
 // --- Início da Lista de domínios permitidos ---
-
-// Domínios principais e fixos
 $allowed_video_sources = [
     'cdn-zenitsu-2-gamabunta.b-cdn.net',
 ];
-
-// Gera dinamicamente os domínios de c1 até c20 (podemos aumentar se necessário)
-for ($i = 1; $i <= 20; $i++) {
+// Gera dinamicamente os domínios de c1 até c30 para garantir cobertura
+for ($i = 1; $i <= 30; $i++) {
     $allowed_video_sources[] = 'c' . $i . '.vidroll.cloud';
 }
-
 // --- Fim da Lista ---
 
 $targetUrl = isset($_GET['url']) ? $_GET['url'] : '';
@@ -29,7 +25,8 @@ if (!isset($urlParts['host']) || !in_array($urlParts['host'], $allowed_video_sou
     die("Erro: Acesso à fonte '{$urlParts['host']}' não é permitido pelo proxy.");
 }
 
-// Força o Referer a ser o do site anroll.net, que é o que o servidor de destino espera.
+// [A CORREÇÃO MAIS IMPORTANTE]
+// Forçamos o Referer a ser o do site anroll.net, pois é o que o servidor de destino espera.
 $headers = [
     'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Referer: https://www.anroll.net/'
