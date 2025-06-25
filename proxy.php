@@ -15,19 +15,52 @@ $allowed_origins = [
     'http://localhost',
     'http://127.0.0.1',
     'http://subarashi.free.nf',
-    'https://subarashi.free.nf',
-    // adicione mais origens confiáveis aqui
+    'https://subarashi.free.nf', // Sua origem principal
+    // Adicione mais origens confiáveis aqui, se necessário
 ];
 
 // Domínios permitidos para vídeo e playlist
 $allowed_video_sources = [
-    'cdn-zenitsu-2-gamabunta.b-cdn.net',
+    // Domínios de CDN e streaming identificados e de confiança:
+    'cdn-zenitsu-2-gamabunta.b-cdn.net', // Domínio principal descoberto
+    
+    // Domínios `.cloud` que você identificou e que são necessários:
+    'c1.vidroll.cloud',
+    'c2.vidroll.cloud',
+    'c3.vidroll.cloud',
+    'c4.vidroll.cloud',
+    'c5.vidroll.cloud',
+    'c6.vidroll.cloud',
+    'c7.vidroll.cloud',
+    'c8.vidroll.cloud',
+    'c9.vidroll.cloud',
+    'c10.vidroll.cloud',
+    'c11.vidroll.cloud',
+    'c12.vidroll.cloud',
+    'c13.vidroll.cloud',
+    'c14.vidroll.cloud',
+    'c15.vidroll.cloud',
+    'c16.vidroll.cloud',
+    'c17.vidroll.cloud',
+    'c18.vidroll.cloud',
+    'c19.vidroll.cloud',
+    'c20.vidroll.cloud',
+    'c21.vidroll.cloud',
+    'c22.vidroll.cloud',
+    'c23.vidroll.cloud',
+    'c24.vidroll.cloud',
+    'c25.vidroll.cloud',
+    'c26.vidroll.cloud',
+    'c27.vidroll.cloud',
+    'c28.vidroll.cloud',
+    'c29.vidroll.cloud',
+    'c30.vidroll.cloud',
+    
+    // Se você identificou outros domínios `.cloud` ou de outros TLDs
+    // que não estejam listados acima e são necessários, adicione-os aqui:
+    // 'meu-outro-cdn.cloud',
+    // 'cdn-legal.net',
 ];
-
-// Também adiciona dinamicamente "c1.vidroll.cloud" até "c30.vidroll.cloud"
-for ($i = 1; $i <= 30; $i++) {
-    $allowed_video_sources[] = "c{$i}.vidroll.cloud";
-}
 
 // --- FUNÇÃO AUXILIAR PARA PHP <8 (endsWith) ---
 if (!function_exists('str_ends_with')) {
@@ -97,27 +130,22 @@ if ($httpcode < 200 || $httpcode >= 300 || $content === false) {
 // --- TRATAMENTO DO CONTEÚDO ---
 
 if (str_ends_with($targetUrl, '.m3u8')) {
-    // URL base para resolver caminhos relativos
     $baseUrl = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
 
-    // URL absoluta deste proxy para reescrever links na playlist
+    // Este trecho já está configurado para usar HTTPS se o servidor estiver em HTTPS
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $proxyBase = $protocol . '://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['SCRIPT_NAME']) . '/proxy.php';
 
-    // Reescreve linhas que NÃO começam com # para apontar para proxy.php
     $content = preg_replace_callback('/^(?!#)(.*)$/m', function ($matches) use ($baseUrl, $proxyBase) {
         $line = trim($matches[1]);
         if (!preg_match('/^https?:\/\//', $line)) {
-            // Link relativo, converte para absoluto
             $line = $baseUrl . $line;
         }
-        // Reescreve para usar proxy.php?url=...
         return $proxyBase . '?url=' . urlencode($line);
     }, $content);
 
     header('Content-Type: application/vnd.apple.mpegurl');
 } else {
-    // Para segmentos .ts, imagens ou outros arquivos, mantém o Content-Type original
     header('Content-Type: ' . ($contentType ?: 'application/octet-stream'));
 }
 
