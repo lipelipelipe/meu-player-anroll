@@ -1,23 +1,32 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Player de Vídeo HLS</title>
-  <!-- Carregando o hls.js do nosso próprio serviço no Render -->
-  <script src="hls.min.js"></script>
+  <script src="js/hls.min.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
-    video { width: 100%; height: 100%; border: none; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #000;
+      overflow: hidden;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+    }
   </style>
 </head>
 <body>
   <video id="video" controls autoplay playsinline></video>
   <script>
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('Blogger'); // O parâmetro que seu site WordPress envia
+    const token = params.get('Blogger');
 
     if (token) {
-      // A URL do manifesto agora aponta para o NOSSO proxy.php
       const proxyUrl = `proxy.php?url=${encodeURIComponent(token)}`;
       const video = document.getElementById('video');
 
@@ -26,11 +35,12 @@
         hls.loadSource(proxyUrl);
         hls.attachMedia(video);
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Fallback para navegadores com suporte nativo (como Safari)
         video.src = proxyUrl;
+      } else {
+        document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>Seu navegador não suporta HLS.</p>";
       }
     } else {
-      document.body.innerHTML = "<p style='color:white; text-align:center;'>Token de vídeo não fornecido.</p>";
+      document.body.innerHTML = "<p style='color:white; text-align:center; margin-top:20px;'>URL do vídeo não fornecida.</p>";
     }
   </script>
 </body>
