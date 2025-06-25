@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Player de Vídeo HLS</title>
-  <!-- Caminho ajustado: pasta js/hls.min.js -->
+  <!-- Caminho ajustado para js/hls.min.js -->
   <script src="js/hls.min.js"></script>
   <style>
     html, body {
@@ -29,7 +29,8 @@
     const token = params.get('Blogger');
 
     if (token) {
-      const proxyUrl = `proxy.php?url=${encodeURIComponent(token)}`;
+      // Use URL absoluta para o proxy.php, com HTTPS e domínio correto
+      const proxyUrl = `https://meu-player-anroll.onrender.com/proxy.php?url=${encodeURIComponent(token)}`;
       const video = document.getElementById('video');
 
       if (Hls.isSupported()) {
