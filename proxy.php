@@ -21,10 +21,12 @@ $requestTimeout = 45; // Segundos para timeout do cURL
 $allowed_host_patterns = [
     '*.vidroll.cloud',
     '*.b-cdn.net',
-    '*.bunnycdn.ru', // Exemplo, mantenha se relevante
-    // Outros CDNs que você pode encontrar:
-    // '*.cdnprovider.com',
-    // 'specific.cdn.domain.net',
+    '*.bunnycdn.ru',
+    'c5.vidroll.cloud',
+    'c6.vidroll.cloud',
+    'c7.vidroll.cloud',
+    'c8.vidroll.cloud',
+    'cdn-zenitsu-2-gamabunta.b-cdn.net',
 ];
 // --- Fim da Configuração ---
 
