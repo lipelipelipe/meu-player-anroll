@@ -1,5 +1,5 @@
 <?php
-// proxy.php - Versão 4.0 FINAL - Lógica seletiva de Referer
+// proxy.php - Versão 5.0 - Simplificada e Robusta
 
 $allowed_video_sources = [
     'www.anroll.net',
@@ -26,19 +26,11 @@ if (!isset($urlParts['host']) || !in_array($urlParts['host'], $allowed_video_sou
     die("Fonte de vídeo não permitida.");
 }
 
-// ==============================================================================
-// NOVA LÓGICA: SÓ ENVIAMOS O REFERER QUANDO NECESSÁRIO
-// ==============================================================================
+// LÓGICA SIMPLIFICADA: Enviamos sempre os mesmos cabeçalhos para todos.
 $headers = [
-    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Referer: https://www.anroll.net/'
 ];
-
-// As URLs das imagens de preview contêm "/i2/image/".
-// Se a URL NÃO for de uma imagem, nós adicionamos o Referer.
-if (strpos($targetUrl, '/i2/image/') === false) {
-    $headers[] = 'Referer: https://www.anroll.net/';
-}
-// ==============================================================================
 
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $targetUrl);
@@ -54,6 +46,7 @@ $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
 curl_close($ch);
 
 if ($httpcode >= 200 && $httpcode < 300) {
+    // Se for um manifesto, reescreve as URLs
     if (strpos(strtolower($targetUrl), '.m3u8') !== false) {
         header('Content-Type: application/vnd.apple.mpegurl');
         $base_url = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
@@ -75,10 +68,9 @@ if ($httpcode >= 200 && $httpcode < 300) {
         if (strpos($new_content, '#EXT-X-ENDLIST') === false) {
             $new_content .= "#EXT-X-ENDLIST\n";
         }
-
         echo $new_content;
 
-    } else {
+    } else { // Se for qualquer outra coisa (vídeo, imagem), apenas entrega
         header('Content-Type: ' . $contentType);
         echo $content;
     }
