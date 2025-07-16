@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Player de vídeo HLS via proxy seguro.">
+    
+    <title>Meu Player de Vídeo HLS</title>
+    
+    <!-- Importa a biblioteca hls.js da CDN. Essencial para reprodução HLS em navegadores que não têm suporte nativo (como Chrome e Firefox). -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+
+    <!-- Importa nossa folha de estilos personalizada. -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="player-wrapper">
+        <div class="video-container">
+            <!-- 
+              - O elemento <video> onde o conteúdo será renderizado.
+              - `controls`: Exibe os controles padrão do navegador (play, pause, volume, etc.).
+              - `autoplay`: Tenta iniciar o vídeo automaticamente (pode ser bloqueado por navegadores; `muted` aumenta a chance de funcionar).
+              - `playsinline`: Em dispositivos iOS, impede que o vídeo entre em tela cheia automaticamente ao ser iniciado.
+            -->
+            <video id="videoPlayer" controls autoplay playsinline muted></video>
+        </div>
+    </main>
+    
+    <!-- Importa nosso script JavaScript personalizado. É colocado no final do <body> para garantir que o DOM esteja totalmente carregado antes da execução. -->
+    <script src="script.js"></script>
+</body>
+</html>
