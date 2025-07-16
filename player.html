@@ -2,68 +2,159 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
-  <title>Player de Vídeo HLS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player de Vídeo HLS Profissional</title>
   
-  <!-- Carrega a biblioteca HLS que estará na mesma pasta no servidor do Render -->
-  <script src="hls.min.js"></script>
+  <!-- Carrega a biblioteca HLS.js de CDN para melhor performance -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   
   <style>
-    /* Estilo para fazer o player ocupar 100% do espaço disponível, sem margens ou bordas */
-    html, body { 
-      margin: 0; 
-      padding: 0; 
-      background: #000; /* Fundo preto para uma aparência profissional */
-      height: 100%; 
-      overflow: hidden; /* Esconde barras de rolagem desnecessárias */
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
     }
-    video { 
-      width: 100%; 
-      height: 100%; 
-      border: none; 
+    
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .error-message {
+      color: white;
+      text-align: center;
+      margin-top: 50px;
+      padding: 20px;
+    }
+    
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 18px;
     }
   </style>
 </head>
 <body>
-
-  <!-- O elemento <video> que será controlado pelo HLS.js. 
-       'controls' - mostra os controles de play/pause/volume.
-       'autoplay' - tenta iniciar o vídeo automaticamente (pode ser bloqueado por navegadores).
-       'playsinline' - essencial para o autoplay funcionar em iPhones. -->
+  <div id="loading" class="loading">Carregando player...</div>
   <video id="video" controls autoplay playsinline></video>
 
   <script>
-    // Pega os parâmetros da URL da página (a parte que vem depois do '?').
-    const params = new URLSearchParams(window.location.search);
-    
-    // Busca o valor do parâmetro que chamamos de 'Blogger'.
-    // Este parâmetro conterá a URL do vídeo que queremos tocar.
-    const token = params.get('Blogger');
-
-    // Verifica se o parâmetro 'Blogger' foi realmente fornecido na URL.
-    if (token) {
-      // Monta a URL para o nosso proxy, que está na mesma pasta no servidor.
-      // O 'encodeURIComponent' garante que a URL do vídeo seja passada corretamente, mesmo com caracteres especiais.
-      const proxyUrl = `proxy.php?url=${encodeURIComponent(token)}`;
-      
-      // Pega o elemento <video> da página para podermos manipulá-lo.
+    document.addEventListener('DOMContentLoaded', function() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('Blogger');
       const video = document.getElementById('video');
-
-      // Verifica se o navegador do usuário suporta a biblioteca HLS.js (quase todos, exceto Safari antigo).
-      if (Hls.isSupported()) {
-        const hls = new Hls();
-        // Carrega a fonte do vídeo através do nosso script de proxy.
-        hls.loadSource(proxyUrl);
-        // "Anexa" o stream de vídeo ao nosso elemento <video> para que ele seja exibido.
-        hls.attachMedia(video);
-      } 
-      // Se for Safari ou um dispositivo Apple, que tem suporte nativo a HLS, usamos a abordagem direta.
-      else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = proxyUrl;
+      const loading = document.getElementById('loading');
+      
+      if (!token) {
+        document.body.innerHTML = `
+          <div class="error-message">
+            <h2>ERRO: URL do vídeo não fornecida</h2>
+            <p>Por favor, forneça a URL do vídeo no parâmetro 'Blogger'.</p>
+            <p>Exemplo: ${window.location.origin}${window.location.pathname}?Blogger=URL_DO_VIDEO</p>
+          </div>
+        `;
+        return;
       }
-    } else {
-      // Se o parâmetro 'Blogger' não foi encontrado na URL, exibe uma mensagem de erro clara.
-      document.body.innerHTML = "<p style='color:white; text-align:center; font-family: sans-serif;'>ERRO: URL do vídeo não foi fornecida.</p>";
-    }
+      
+      // Configurações do HLS.js
+      const hlsConfig = {
+        maxBufferLength: 30,
+        maxMaxBufferLength: 600,
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5,
+        lowLatencyMode: false,
+        enableWorker: true,
+        startLevel: -1,
+      };
+      
+      function initPlayer() {
+        const proxyUrl = `proxy.php?url=${encodeURIComponent(token)}`;
+        
+        if (Hls.isSupported()) {
+          const hls = new Hls(hlsConfig);
+          
+          hls.on(Hls.Events.MEDIA_ATTACHED, function() {
+            console.log('Vídeo e HLS.js conectados!');
+          });
+          
+          hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+            console.log('Manifesto carregado com', data.levels.length, 'qualidades');
+            loading.style.display = 'none';
+          });
+          
+          hls.on(Hls.Events.ERROR, function(event, data) {
+            if (data.fatal) {
+              switch(data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  console.error('Erro de rede - tentando recuperar...');
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  console.error('Erro de mídia - tentando recuperar...');
+                  hls.recoverMediaError();
+                  break;
+                default:
+                  handleFatalError();
+                  break;
+              }
+            }
+          });
+          
+          hls.loadSource(proxyUrl);
+          hls.attachMedia(video);
+          
+          video.addEventListener('canplay', function() {
+            video.play().catch(e => {
+              console.log('Auto-play foi impedido:', e);
+              loading.innerHTML = 'Clique para reproduzir';
+              loading.style.display = 'block';
+              loading.onclick = function() {
+                video.play();
+                loading.style.display = 'none';
+              };
+            });
+          });
+          
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          // Fallback para Safari
+          video.src = proxyUrl;
+          video.addEventListener('loadedmetadata', function() {
+            loading.style.display = 'none';
+            video.play().catch(e => {
+              console.log('Auto-play foi impedido:', e);
+              loading.innerHTML = 'Clique para reproduzir';
+              loading.style.display = 'block';
+              loading.onclick = function() {
+                video.play();
+                loading.style.display = 'none';
+              };
+            });
+          });
+        } else {
+          handleFatalError();
+        }
+      }
+      
+      function handleFatalError() {
+        loading.style.display = 'none';
+        document.body.innerHTML = `
+          <div class="error-message">
+            <h2>ERRO: Navegador não suportado</h2>
+            <p>Seu navegador não suporta a reprodução de vídeos HLS.</p>
+            <p>Por favor, tente com um navegador moderno como Chrome, Firefox ou Edge.</p>
+          </div>
+        `;
+      }
+      
+      initPlayer();
+    });
   </script>
 </body>
 </html>
