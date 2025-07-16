@@ -29,7 +29,7 @@ $targetUrl = urldecode($_GET['url']);
 
 // Valida a URL
 $urlParts = parse_url($targetUrl);
-if (!isset($urlParts['host']) {
+if (!isset($urlParts['host'])) {
     http_response_code(400);
     header('Content-Type: application/json');
     die(json_encode(['error' => 'URL inválida.']));
