@@ -1,131 +1,113 @@
 <?php
-// proxy.php — Proxy seguro para streaming HLS com reescrita automática de manifests (.m3u8)
+// proxy.php - Versão profissional para Render.com
 
-// --- Configurações ---
-
-// Domínios permitidos (parcial com suporte a subdomínios)
+// Lista de domínios permitidos
 $allowed_video_sources = [
     'www.anroll.net',
     'cdn-zenitsu-2-gamabunta.b-cdn.net',
-    'vidroll.cloud',
     'c5.vidroll.cloud',
     'c6.vidroll.cloud',
-    // adicione outros domínios que desejar
+    'c7.vidroll.cloud',
+    'c8.vidroll.cloud',
+    'vidroll.cloud' // Domínio raiz adicionado para maior abrangência
 ];
 
-// Domínios permitidos para CORS
-$allowed_origins = [
-    'http://localhost',
-    'https://subarashi.free.nf',
-    // adicione outros domínios que acessam seu proxy
-];
+// Configurações de segurança
+header('Access-Control-Allow-Origin: *');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
 
-// URL do seu proxy (para reescrita dos manifests)
-$my_proxy_url = 'https://meu-player-anroll.onrender.com/proxy.php';
-
-// --- CORS ---
-if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
-    header("Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}");
-} else {
-    header("Access-Control-Allow-Origin: *");
-}
-
-// --- Validação URL ---
-$targetUrl = isset($_GET['url']) ? trim($_GET['url']) : '';
-if (!$targetUrl) {
+// Verifica se a URL foi fornecida
+if (!isset($_GET['url']) || empty($_GET['url'])) {
     http_response_code(400);
-    die("URL não fornecida.");
+    header('Content-Type: application/json');
+    die(json_encode(['error' => 'URL não fornecida.']));
 }
 
-$scheme = parse_url($targetUrl, PHP_URL_SCHEME);
-if (!in_array($scheme, ['http', 'https'])) {
-    http_response_code(400);
-    die("Protocolo inválido.");
-}
+$targetUrl = urldecode($_GET['url']);
 
-// Evita loop de proxy
-if (strpos($targetUrl, $_SERVER['HTTP_HOST']) !== false) {
-    http_response_code(400);
-    die("Loop de proxy detectado.");
-}
-
+// Valida a URL
 $urlParts = parse_url($targetUrl);
-$host = $urlParts['host'] ?? '';
-$permitido = false;
-foreach ($allowed_video_sources as $source) {
-    if (stripos($host, $source) !== false) {
-        $permitido = true;
+if (!isset($urlParts['host']) {
+    http_response_code(400);
+    header('Content-Type: application/json');
+    die(json_encode(['error' => 'URL inválida.']));
+}
+
+// Verifica se o domínio está na lista de permissões
+$domainAllowed = false;
+foreach ($allowed_video_sources as $allowed_domain) {
+    if (strpos($urlParts['host'], $allowed_domain) !== false) {
+        $domainAllowed = true;
         break;
     }
 }
-if (!$permitido) {
+
+if (!$domainAllowed) {
     http_response_code(403);
-    error_log("[PROXY BLOQUEADO] Host não permitido: $host — $targetUrl");
-    die("Fonte de vídeo não permitida.");
+    header('Content-Type: application/json');
+    die(json_encode(['error' => "Domínio '{$urlParts['host']}' não permitido."]));
 }
 
-// --- cURL com headers reforçados ---
-$headers = [
-    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Referer: https://www.anroll.net/',
-    'Connection: keep-alive',
-    'Cache-Control: max-age=0',
-];
-
-// Inicializa cURL
+// Configura o cURL
 $ch = curl_init();
 curl_setopt_array($ch, [
     CURLOPT_URL => $targetUrl,
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_HTTPHEADER => $headers,
+    CURLOPT_MAXREDIRS => 5,
     CURLOPT_SSL_VERIFYPEER => false,
     CURLOPT_SSL_VERIFYHOST => false,
-    CURLOPT_HEADER => false,
-    CURLOPT_COOKIEFILE => '', // ativa uso de cookies
-    CURLOPT_COOKIEJAR => '',  // ativa armazenamento de cookies
     CURLOPT_CONNECTTIMEOUT => 10,
-    CURLOPT_TIMEOUT => 20,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_HTTPHEADER => [
+        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Referer: https://www.anroll.net/',
+        'Accept: */*',
+        'Accept-Language: en-US,en;q=0.9',
+    ]
 ]);
 
-$content = curl_exec($ch);
-$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
 curl_close($ch);
 
-if ($httpcode >= 200 && $httpcode < 300) {
-    if (preg_match('/\.m3u8(\?.*)?$/i', $targetUrl)) {
+// Processa a resposta
+if ($httpCode >= 200 && $httpCode < 300) {
+    if (strpos($targetUrl, '.m3u8') !== false) {
+        // Processa playlists M3U8
         header('Content-Type: application/vnd.apple.mpegurl');
-
-        $base_url = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
-        $lines = explode("\n", $content);
-        $new_content = '';
-
+        $baseUrl = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
+        $currentProxyUrl = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
+        
+        $lines = explode("\n", $response);
+        $processedContent = '';
+        
         foreach ($lines as $line) {
             $line = trim($line);
-            if ($line === '' || $line[0] === '#') {
-                $new_content .= $line . "\n";
+            if (empty($line) || $line[0] === '#') {
+                $processedContent .= $line . "\n";
                 continue;
             }
-            // Corrige caminhos relativos
-            if (strpos($line, 'http') !== 0) {
-                $line = $base_url . $line;
+            
+            if (!preg_match('/^https?:\/\//i', $line)) {
+                $line = $baseUrl . $line;
             }
-            // Reencaminha pelo proxy
-            $proxied_line = $my_proxy_url . '?url=' . urlencode($line);
-            $new_content .= $proxied_line . "\n";
+            
+            $processedContent .= $currentProxyUrl . '?url=' . urlencode($line) . "\n";
         }
-        if (strpos($new_content, '#EXT-X-ENDLIST') === false) {
-            $new_content .= "#EXT-X-ENDLIST\n";
-        }
-        echo $new_content;
+        
+        echo $processedContent;
     } else {
-        header("Content-Type: " . $contentType);
-        echo $content;
+        // Outros tipos de conteúdo (TS, etc)
+        header('Content-Type: ' . $contentType);
+        echo $response;
     }
 } else {
-    http_response_code($httpcode);
-    die("Erro ao buscar conteúdo remoto. HTTP código: $httpcode");
+    http_response_code(502);
+    header('Content-Type: application/json');
+    die(json_encode(['error' => "Falha ao buscar o conteúdo. Status: {$httpCode}"]));
 }
+?>
