@@ -1,7 +1,7 @@
 <?php
-// proxy.php - Versão FINAL para produção no Render.com
+// proxy.php - Versão 3.0 FINAL - Corrige o HTTP e o Fim da Lista
 
-// Lista de domínios permitidos, já validada pela sua varredura
+// Lista de domínios permitidos
 $allowed_video_sources = [
     'www.anroll.net',
     'cdn-zenitsu-2-gamabunta.b-cdn.net',
@@ -12,13 +12,12 @@ $allowed_video_sources = [
 ];
 
 // ==============================================================================
-// MODIFICAÇÃO IMPORTANTE PARA O RENDER.COM
-// Detecta automaticamente se o servidor usa HTTPS (o Render usa).
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
-$my_proxy_url = $protocol . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
+// CORREÇÃO Nº 1: FORÇAMOS A URL SEGURA (HTTPS) DO NOSSO PROXY AQUI.
+// Isso resolve o problema de conteúdo misto (http vs https).
+$my_proxy_url = 'https://meu-player-anroll.onrender.com/proxy.php';
 // ==============================================================================
 
-header('Access-Control-Allow-Origin: *'); // Permite que seu WordPress acesse o player
+header('Access-Control-Allow-Origin: *');
 
 $targetUrl = isset($_GET['url']) ? $_GET['url'] : '';
 if (empty($targetUrl)) {
@@ -29,10 +28,9 @@ if (empty($targetUrl)) {
 $urlParts = parse_url($targetUrl);
 if (!isset($urlParts['host']) || !in_array($urlParts['host'], $allowed_video_sources)) {
     http_response_code(403); 
-    die("Fonte de vídeo não permitida. O domínio '{$urlParts['host']}' não está na lista de permissões.");
+    die("Fonte de vídeo não permitida.");
 }
 
-// Cabeçalhos para simular um navegador acessando o anroll.net
 $headers = [
     'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Referer: https://www.anroll.net/'
@@ -43,7 +41,6 @@ curl_setopt($ch, CURLOPT_URL, $targetUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-// Em produção, é melhor ter isso como true, mas para evitar problemas de certificado no Docker, false é mais seguro.
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
 curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
@@ -70,7 +67,16 @@ if ($httpcode >= 200 && $httpcode < 300) {
                 $new_content .= $line . "\n";
             }
         }
+
+        // ==============================================================================
+        // CORREÇÃO Nº 2: Garante que o vídeo tenha um fim e não carregue para sempre.
+        if (strpos($new_content, '#EXT-X-ENDLIST') === false) {
+            $new_content .= "#EXT-X-ENDLIST\n";
+        }
+        // ==============================================================================
+
         echo $new_content;
+
     } else {
         header('Content-Type: ' . $contentType);
         echo $content;
