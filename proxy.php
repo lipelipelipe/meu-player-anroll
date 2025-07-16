@@ -1,53 +1,123 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="UTF-8">
-  <title>Player de Vídeo HLS</title>
-  <script src="hls.min.js"></script>
-  <style>
-    html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
-    video { width: 100%; height: 100%; border: none; }
-  </style>
-</head>
-<body>
-  <video id="video" controls autoplay playsinline></video>
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('Blogger');
+<?php
+// proxy.php — Versão 6.0 FINAL, Blindada e Compatível com Players Modernos
 
-    if (token) {
-      const proxyUrl = `proxy.php?url=${encodeURIComponent(token)}`;
-      const video = document.getElementById('video');
+// Domínios permitidos (fontes de vídeo confiáveis)
+$allowed_video_sources = [
+    'www.anroll.net',
+    'cdn-zenitsu-2-gamabunta.b-cdn.net',
+    'c5.vidroll.cloud',
+    'c6.vidroll.cloud',
+    'c7.vidroll.cloud',
+    'c8.vidroll.cloud'
+];
 
-      if (Hls.isSupported()) {
-        
-        // ==============================================================================
-        // NOVA CONFIGURAÇÃO: Desabilitamos o carregamento de thumbnails.
-        // Isso vai impedir que o player tente buscar as imagens /i2/image/
-        // e, consequentemente, vai eliminar os erros 403.
-        // ==============================================================================
-        const hlsConfig = {
-          pdtLoadRetry: 4,    // Retentativas padrão
-          levelLoadRetry: 4,  // Retentativas padrão
-          fragLoadRetry: 4,   // Retentativas padrão
-          enableWebVTT: false,  // Desabilita legendas WebVTT se não forem usadas
-          enableCEA708Captions: false, // Desabilita captions se não forem usadas
-          // A LINHA MAIS IMPORTANTE:
-          vttjs: '', // Forçar a desativação de qualquer tentativa de buscar thumbnails
-        };
-        
-        const hls = new Hls(hlsConfig);
-        // ==============================================================================
+// Domínios permitidos para requisições CORS
+$allowed_origins = [
+    'http://localhost',
+    'https://subarashi.free.nf'
+];
 
-        hls.loadSource(proxyUrl);
-        hls.attachMedia(video);
-        
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = proxyUrl;
-      }
+// URL do próprio proxy (ajuste conforme seu domínio)
+$my_proxy_url = 'https://meu-player-anroll.onrender.com/proxy.php';
+
+// Valida CORS dinamicamente
+if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
+    header("Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}");
+} else {
+    header("Access-Control-Allow-Origin: *"); // fallback aberto (ajuste conforme necessário)
+}
+
+// Impede acesso direto sem parâmetro
+$targetUrl = isset($_GET['url']) ? $_GET['url'] : '';
+if (empty($targetUrl)) {
+    http_response_code(400);
+    die("URL não fornecida.");
+}
+
+// Valida protocolo (só http/https)
+$scheme = parse_url($targetUrl, PHP_URL_SCHEME);
+if (!in_array($scheme, ['http', 'https'])) {
+    http_response_code(400);
+    die("Protocolo inválido.");
+}
+
+// Impede loop no próprio proxy
+if (strpos($targetUrl, $_SERVER['HTTP_HOST']) !== false) {
+    http_response_code(400);
+    die("Loop de proxy detectado.");
+}
+
+// Valida host permitido
+$urlParts = parse_url($targetUrl);
+$host = $urlParts['host'] ?? '';
+if (!in_array($host, $allowed_video_sources)) {
+    http_response_code(403);
+    die("Fonte de vídeo não permitida.");
+}
+
+// Define cabeçalhos padrão
+$headers = [
+    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Referer: https://www.anroll.net/'
+];
+
+// Inicia requisição cURL
+$ch = curl_init();
+curl_setopt_array($ch, [
+    CURLOPT_URL => $targetUrl,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_HTTPHEADER => $headers,
+    CURLOPT_SSL_VERIFYPEER => false,
+    CURLOPT_SSL_VERIFYHOST => false,
+    CURLOPT_HEADER => false
+]);
+
+$content = curl_exec($ch);
+$httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+curl_close($ch);
+
+// Se sucesso
+if ($httpcode >= 200 && $httpcode < 300) {
+    // Se for um manifesto HLS (.m3u8)
+    if (preg_match('/\.m3u8(\?.*)?$/i', $targetUrl)) {
+        header('Content-Type: application/vnd.apple.mpegurl');
+
+        $base_url = substr($targetUrl, 0, strrpos($targetUrl, '/') + 1);
+        $lines = explode("\n", $content);
+        $new_content = '';
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') {
+                $new_content .= $line . "\n";
+                continue;
+            }
+
+            // Corrige caminhos relativos
+            if (strpos($line, 'http') !== 0) {
+                $line = $base_url . $line;
+            }
+
+            // Redireciona pelo proxy
+            $new_content .= $my_proxy_url . '?url=' . urlencode($line) . "\n";
+        }
+
+        // Garante fim do manifesto
+        if (strpos($new_content, '#EXT-X-ENDLIST') === false) {
+            $new_content .= "#EXT-X-ENDLIST\n";
+        }
+
+        echo $new_content;
     } else {
-      document.body.innerHTML = "<p style='color:white; text-align:center; font-family: sans-serif;'>ERRO: URL do vídeo não foi fornecida.</p>";
+        // Outro tipo de conteúdo (vídeo, TS, imagem etc.)
+        header("Content-Type: " . $contentType);
+        echo $content;
     }
-  </script>
-</body>
-</html>
+} else {
+    // Falha ao buscar conteúdo remoto
+    http_response_code($httpcode > 0 ? $httpcode : 502);
+    die("Falha ao buscar conteúdo remoto. Código: " . $httpcode);
+}
+?>
