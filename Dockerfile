@@ -1,26 +1,29 @@
-# Usa uma imagem oficial do PHP que já vem com o servidor web Apache.
-FROM php:apache
+# Estágio 1: Comece com a imagem oficial do Node.js que já inclui o Playwright e suas dependências.
+# Esta é a imagem recomendada pela equipe do Playwright para evitar problemas.
+FROM mcr.microsoft.com/playwright/javascript:v1.42.1-focal
 
-# O Apache no container serve arquivos a partir de /var/www/html/
-WORKDIR /var/www/html/
+# Define o diretório de trabalho dentro do contêiner.
+WORKDIR /app
 
-# Instala as extensões PHP necessárias.
-RUN apt-get update && apt-get install -y \
-  libcurl4-openssl-dev \
-  && rm -rf /var/lib/apt/lists/* \
-  && docker-php-ext-install curl sockets
+# Copia os arquivos de definição de dependências primeiro.
+# Isso aproveita o cache do Docker. Se esses arquivos não mudarem, o Docker
+# não irá reinstalar as dependências, acelerando builds futuras.
+COPY package.json package-lock.json ./
 
-# Copia todos os arquivos do seu projeto para dentro do container.
-COPY . /var/www/html/
+# Instala as dependências definidas no package.json.
+RUN npm install
 
-# --- LINHAS ADICIONADAS ---
-# Define permissões de forma explícita e robusta.
-# 755 para diretórios (ler, escrever, executar para o dono; ler, executar para outros)
-# 644 para arquivos (ler, escrever para o dono; ler para outros)
-RUN find /var/www/html -type d -exec chmod 755 {} \; \
-    && find /var/www/html -type f -exec chmod 644 {} \;
+# Copia o resto do código da sua aplicação para o diretório de trabalho.
+COPY . .
 
-# Garante que o servidor Apache seja o dono dos arquivos.
-RUN chown -R www-data:www-data /var/www/html
+# O Playwright já vem instalado nesta imagem, então não precisamos de 'npx playwright install'.
+# Opcional: Se quiser ter certeza, você pode descomentar a linha abaixo, mas não é necessário.
+# RUN npx playwright install --with-deps
 
-# A imagem base já sabe como iniciar o Apache.
+# Expõe a porta que o nosso serviço Express irá escutar.
+# A Render irá mapear uma porta externa para esta.
+EXPOSE 3001
+
+# O comando para iniciar a aplicação quando o contêiner for executado.
+# Ele executa o script "start" definido no nosso package.json.
+CMD ["npm", "start"]
