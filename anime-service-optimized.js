@@ -1,6 +1,6 @@
-// anime-service.js - v20.0 (Edição Final com CORS Explícito)
+// anime-service.js - v22.0 (Edição Definitiva Ultraleve - Validada)
 // Autor: Felipe & IA Assistente
-// Foco: Compatibilidade total com requisições AJAX de qualquer origem.
+// Foco: Performance, simplicidade e compatibilidade máximas. Sem Playwright.
 
 const express = require('express');
 const cors = require('cors');
@@ -10,13 +10,9 @@ const cheerio = require('cheerio');
 const app = express();
 const port = process.env.PORT || 3001;
 
-// =========================================================================================
-// >> A CORREÇÃO FINAL E ESSENCIAL <<
 // Configuração explícita do CORS para aceitar requisições de qualquer origem (incluindo localhost).
-// Isso resolve o problema do "Verificando..." que fica travado.
-// =========================================================================================
 const corsOptions = {
-  origin: '*', // Permite que qualquer site (como o seu localhost) faça requisições.
+  origin: '*',
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   preflightContinue: false,
   optionsSuccessStatus: 204
@@ -40,11 +36,16 @@ app.post('/extract', async (req, res) => {
         return res.status(400).json({ error: 'ORDEM CORROMPIDA: URL da série do Gogoanime não fornecida ou inválida.' });
     }
 
+    console.log(`\n======================================================`);
     console.log(`[ALVO DESIGNADO] ${seriesUrl}`);
+    console.log(`======================================================`);
+
     try {
         console.log('[AGENTE] Modo Ultraleve ativado. Obtendo metadados com Axios...');
         const { data: mainPageHtml } = await axios.get(seriesUrl);
         const $ = cheerio.load(mainPageHtml);
+
+        console.log('[RECONHECIMENTO] Analisando estrutura da página de metadados...');
         
         const metadata = {
             title: $('.infox h1.entry-title').text().trim(),
@@ -56,11 +57,16 @@ app.post('/extract', async (req, res) => {
         };
 
         if (!metadata.title) throw new Error('Falha no reconhecimento. Título da série não encontrado.');
+        console.log(`[RECONHECIMENTO COMPLETO] Título: "${metadata.title}"`);
         
-        const episodeLinks = $('#load_ep a').map((i, el) => $(el).attr('href')).get();
-        const episodesToProcess = episodeLinks.map(link => 'https://gogoanime.by' + link).reverse();
+        const episodeLinks = $('#episode_related a, .episodes-container .episode-item a, #load_ep a').map((i, el) => $(el).attr('href')).get();
+        if (episodeLinks.length === 0) {
+            throw new Error("Nenhum episódio encontrado. O seletor do site pode ter mudado.");
+        }
         
-        console.log(`[MAPEAMENTO] ${episodesToProcess.length} episódios encontrados. Iniciando extração.`);
+        const episodesToProcess = episodeLinks.map(link => new URL(link, 'https://gogoanime.by/').href).reverse();
+        
+        console.log(`[MAPEAMENTO] ${episodesToProcess.length} episódios encontrados. Iniciando extração dos tokens.`);
         
         const extractedEpisodes = [];
         const REGEX_TOKEN = /loadPlayer\s*\(\s*['"](Blogger|embed)['"],\s*['"]([a-zA-Z0-9\/+=]+)['"]/i;
@@ -69,7 +75,7 @@ app.post('/extract', async (req, res) => {
 
         for (const [index, episodeUrl] of episodesToProcess.entries()) {
             try {
-                await new Promise(resolve => setTimeout(resolve, 50)); // Pausa mínima
+                await new Promise(resolve => setTimeout(resolve, 50)); // Pausa mínima para não sobrecarregar
                 const { data: htmlContent } = await axios.get(episodeUrl, { timeout: 15000 });
                 const videoMatch = htmlContent.match(REGEX_TOKEN);
                 
@@ -99,5 +105,8 @@ app.post('/extract', async (req, res) => {
 
 // OUVE NA PORTA DO RENDER E NO HOST 0.0.0.0
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVIDOR ATIVO] Escutando em 0.0.0.0:${port}`);
+    console.log('======================================================');
+    console.log(`[SERVIDOR DE EXTRAÇÃO ULTRALEVE ATIVO] Escutando em 0.0.0.0:${port}`);
+    console.log('[AGUARDANDO ORDENS DE EXTRAÇÃO]');
+    console.log('======================================================');
 });
