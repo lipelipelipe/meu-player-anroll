@@ -1,6 +1,6 @@
-// anime-service.js - v22.0 (Edição Definitiva Ultraleve - Validada)
+// anime-service.js - v23.0 (Edição Definitiva Ultraleve com Lógica de Links Corrigida)
 // Autor: Felipe & IA Assistente
-// Foco: Performance, simplicidade e compatibilidade máximas. Sem Playwright.
+// Foco: Versão final que combina a abordagem ultraleve com a lógica de extração de links correta.
 
 const express = require('express');
 const cors = require('cors');
@@ -10,42 +10,24 @@ const cheerio = require('cheerio');
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Configuração explícita do CORS para aceitar requisições de qualquer origem (incluindo localhost).
-const corsOptions = {
-  origin: '*',
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-};
+const corsOptions = { origin: '*', methods: 'GET,POST', optionsSuccessStatus: 204 };
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
-
-// ROTA DE VERIFICAÇÃO DE SAÚDE (HEALTH CHECK)
 app.get('/', (req, res) => {
-    res.status(200).json({
-        status: 'ok',
-        message: 'Serviço de extração ULTRALEVE está operacional e aguardando ordens na rota /extract.'
-    });
+    res.status(200).json({ status: 'ok', message: 'Serviço ULTRALEVE está operacional (v23.0).' });
 });
 
-// --- ROTA DE EXECUÇÃO DE ORDENS: /extract ---
 app.post('/extract', async (req, res) => {
     const { seriesUrl } = req.body;
     if (!seriesUrl || !seriesUrl.includes('gogoanime.by/')) {
-        return res.status(400).json({ error: 'ORDEM CORROMPIDA: URL da série do Gogoanime não fornecida ou inválida.' });
+        return res.status(400).json({ error: 'URL inválida.' });
     }
-
-    console.log(`\n======================================================`);
-    console.log(`[ALVO DESIGNADO] ${seriesUrl}`);
-    console.log(`======================================================`);
-
+    console.log(`\n[MISSÃO] Alvo: ${seriesUrl}`);
     try {
-        console.log('[AGENTE] Modo Ultraleve ativado. Obtendo metadados com Axios...');
+        console.log('[AGENTE] Modo Ultraleve. Obtendo metadados...');
         const { data: mainPageHtml } = await axios.get(seriesUrl);
         const $ = cheerio.load(mainPageHtml);
-
-        console.log('[RECONHECIMENTO] Analisando estrutura da página de metadados...');
         
         const metadata = {
             title: $('.infox h1.entry-title').text().trim(),
@@ -56,16 +38,36 @@ app.post('/extract', async (req, res) => {
             genres: $('.genxed a').map((i, el) => $(el).text().trim()).get()
         };
 
-        if (!metadata.title) throw new Error('Falha no reconhecimento. Título da série não encontrado.');
-        console.log(`[RECONHECIMENTO COMPLETO] Título: "${metadata.title}"`);
+        if (!metadata.title) throw new Error('Título não encontrado.');
         
-        const episodeLinks = $('#episode_related a, .episodes-container .episode-item a, #load_ep a').map((i, el) => $(el).attr('href')).get();
-        if (episodeLinks.length === 0) {
-            throw new Error("Nenhum episódio encontrado. O seletor do site pode ter mudado.");
+        // =========================================================================================
+        // >> A CORREÇÃO FINAL E DEFINITIVA <<
+        // Combina a busca em múltiplos seletores com a garantia de que a URL será sempre completa.
+        // =========================================================================================
+        const baseUrl = 'https://gogoanime.by/';
+        const rawLinks = $('#episode_related a, .episodes-container .episode-item a, #load_ep a')
+            .map((i, el) => $(el).attr('href'))
+            .get();
+
+        const episodesToProcess = rawLinks
+            .map(link => {
+                // Se o link já for uma URL completa, use-o.
+                // Se for um caminho relativo (ex: /episode-1), complete-o com a base.
+                try {
+                    return new URL(link, baseUrl).href;
+                } catch (e) {
+                    return null; // Retorna nulo se o link for inválido
+                }
+            })
+            .filter(href => href && href.includes('-episode-')) // Filtra nulos e garante que é um link de episódio
+            .reverse();
+        // =========================================================================================
+
+        if (episodesToProcess.length === 0) {
+            // Este erro agora é mais confiável. Se ele aparecer, o site realmente mudou.
+            throw new Error('Nenhum episódio encontrado. O seletor do HTML do site pode ter sido alterado.');
         }
-        
-        const episodesToProcess = episodeLinks.map(link => new URL(link, 'https://gogoanime.by/').href).reverse();
-        
+
         console.log(`[MAPEAMENTO] ${episodesToProcess.length} episódios encontrados. Iniciando extração dos tokens.`);
         
         const extractedEpisodes = [];
@@ -75,10 +77,9 @@ app.post('/extract', async (req, res) => {
 
         for (const [index, episodeUrl] of episodesToProcess.entries()) {
             try {
-                await new Promise(resolve => setTimeout(resolve, 50)); // Pausa mínima para não sobrecarregar
+                await new Promise(resolve => setTimeout(resolve, 50));
                 const { data: htmlContent } = await axios.get(episodeUrl, { timeout: 15000 });
                 const videoMatch = htmlContent.match(REGEX_TOKEN);
-                
                 if (videoMatch && videoMatch[2]) {
                     const titleMatch = htmlContent.match(REGEX_TITLE);
                     const chapterName = titleMatch ? titleMatch[1] : `Episode ${index + 1}`;
@@ -93,20 +94,15 @@ app.post('/extract', async (req, res) => {
         }
         
         const report = { metadata: metadata, episodes: extractedEpisodes };
-        console.log(`[MISSÃO CUMPRIDA] Extração de ${extractedEpisodes.length} episódios concluída.`);
+        console.log(`[MISSÃO CUMPRIDA] Extração de ${extractedEpisodes.length} tokens concluída.`);
         res.status(200).json(report);
 
     } catch (error) {
-        const errorMessage = error.message.split('\n')[0];
-        console.error(`[ERRO CATASTRÓFICO] A missão falhou:`, errorMessage);
-        res.status(500).json({ error: `O Agente de Extração falhou no servidor: ${errorMessage}` });
+        console.error(`[ERRO CATASTRÓFICO]`, error);
+        res.status(500).json({ error: `O Agente falhou: ${error.message}` });
     }
 });
 
-// OUVE NA PORTA DO RENDER E NO HOST 0.0.0.0
 app.listen(port, '0.0.0.0', () => {
-    console.log('======================================================');
-    console.log(`[SERVIDOR DE EXTRAÇÃO ULTRALEVE ATIVO] Escutando em 0.0.0.0:${port}`);
-    console.log('[AGUARDANDO ORDENS DE EXTRAÇÃO]');
-    console.log('======================================================');
+    console.log(`[SERVIDOR ATIVO] Escutando em 0.0.0.0:${port}`);
 });
